@@ -53,7 +53,6 @@ if ARUCO_DICT.get(args["type"], None) is None:
 # load the ArUCo dictionary and grab the ArUCo parameters
 print("[INFO] detecting '{}' tags...".format(args["type"]))
 arucoDict = cv2.aruco.Dictionary_get(ARUCO_DICT[args["type"]])
-print(arucoDict)
 arucoParams = cv2.aruco.DetectorParameters_create()
 
 # initialize the video stream and allow the camera sensor to warm up
@@ -79,56 +78,160 @@ def replace_with_image(frame, corners, image):
     return frame
 
 
+def findIntersection(p1, p2, p3, p4):
+    (x1, y1), (x2, y2), (x3, y3), (x4, y4) = p1, p2, p3, p4
+    if (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4):
+        px= ( (x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4) ) / ( (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4) )
+        py= ( (x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4) ) / ( (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4) )
+        return [px, py]
+    else:
+        print("lines do not intercept!")
+
+def find_aruco_corners(corners, ids):
+    ids = ids.flatten()
+
+    corner_markers = []
+
+    if 0 in ids and 39 in ids:
+        corns_0 = np.squeeze(corners[np.squeeze(np.where(ids == 0))])
+        (topLeft_0, topRight_0, bottomRight_0, bottomLeft_0) = corns_0
+        corns_39 = np.squeeze(corners[np.squeeze(np.where(ids == 39))])
+        (topLeft_39, topRight_39, bottomRight_39, bottomLeft_39) = corns_39
+
+        topLeft = topLeft_0
+        bottomRight = bottomRight_39
+
+        if 7 in ids:
+            corns_7 = np.squeeze(corners[np.squeeze(np.where(ids == 7))])
+            (topLeft_7, topRight_7, bottomRight_7, bottomLeft_7) = corns_7
+            topRight = topRight_7
+        else:
+            topRight = findIntersection(topRight_0, topLeft_0, topRight_39, bottomRight_39)
+
+        if 32 in ids:
+            corns_32 = np.squeeze(corners[np.squeeze(np.where(ids == 32))])
+            (topLeft_32, topRight_32, bottomRight_32, bottomLeft_32) = corns_32
+            bottomLeft = bottomLeft_32
+        else:
+            bottomLeft = findIntersection(topLeft_0, bottomLeft_0, bottomRight_39, bottomLeft_39)
+
+        corner_markers = (topLeft, topRight, bottomRight, bottomLeft)
+
+
+    if 7 in ids and 32 in ids:
+        corns_7 = np.squeeze(corners[np.squeeze(np.where(ids == 7))])
+        (topLeft_7, topRight_7, bottomRight_7, bottomLeft_7) = corns_7
+        corns_32 = np.squeeze(corners[np.squeeze(np.where(ids == 32))])
+        (topLeft_32, topRight_32, bottomRight_32, bottomLeft_32) = corns_32
+
+        topRight = topRight_7
+        bottomLeft = bottomLeft_32
+
+        if 0 in ids:
+            corns_0 = np.squeeze(corners[np.squeeze(np.where(ids == 0))])
+            (topLeft_0, topRight_0, bottomRight_0, bottomLeft_0) = corns_0
+            topLeft = topLeft_0
+        else:
+            topLeft = findIntersection(topRight_7, topLeft_7, bottomLeft_32, topLeft_32)
+
+        if 39 in ids:
+            corns_39 = np.squeeze(corners[np.squeeze(np.where(ids == 39))])
+            (topLeft_39, topRight_39, bottomRight_39, bottomLeft_39) = corns_39
+            bottomRight = bottomRight_39
+        else:
+            bottomRight = findIntersection(topRight_7, bottomRight_7, bottomRight_32, bottomLeft_32)
+
+        corner_markers = (topLeft, topRight, bottomRight, bottomLeft)
+
+
+    # topLeft, topRight, bottomRight, bottomLeft = [],[],[],[],
+
+    # if 0 in ids:
+    #     corns_0 = np.squeeze(corners[np.squeeze(np.where(ids == 0))])
+    #     (topLeft_0, topRight_0, bottomRight_0, bottomLeft_0) = corns_0
+    #     topLeft = topLeft_0
+    #
+    # if 7 in ids:
+    #     corns_7 = np.squeeze(corners[np.squeeze(np.where(ids == 7))])
+    #     (topLeft_7, topRight_7, bottomRight_7, bottomLeft_7) = corns_7
+    #     topRight = topRight_7
+    #
+    # if 32 in ids:
+    #     corns_32 = np.squeeze(corners[np.squeeze(np.where(ids == 32))])
+    #     (topLeft_32, topRight_32, bottomRight_32, bottomLeft_32) = corns_32
+    #     bottomLeft = bottomLeft_32
+    #
+    # if 39 in ids:
+    #     corns_39 = np.squeeze(corners[np.squeeze(np.where(ids == 39))])
+    #     (topLeft_39, topRight_39, bottomRight_39, bottomLeft_39) = corns_39
+    #     bottomRight = bottomRight_39
+    #
+    # try:
+    #     if topLeft != []:
+    #         topLeft = findIntersection(topRight_7, topLeft_7, bottomLeft_32, topLeft_32)
+    #     if not bottomRight!= []:
+    #         bottomRight = findIntersection(topRight_7, bottomRight_7, bottomRight_32, bottomLeft_32)
+    #     if not topRight!= []:
+    #         topRight = findIntersection(topRight_0, topLeft_0, topRight_39, bottomRight_39)
+    #     if not bottomLeft!= []:
+    #         bottomLeft = findIntersection(topLeft_0, bottomLeft_0, bottomRight_39, bottomLeft_39)
+    # except Exception as e:
+    #     print('Can not find all corners!')
+    #     print(e)
+    # else:
+    #     corner_markers = (topLeft, topRight, bottomRight, bottomLeft)
+    #     print('Corners found!')
+
+    return corner_markers
+
 # loop over the frames from the video stream
 while True:
     frame = vs.read()
-    frame = imutils.resize(frame, width=1000)
-
+    # frame = imutils.resize(frame, width=1000)
+    print(frame.shape)
     # detect ArUco markers in the input frame
-    (corners, ids, rejected) = cv2.aruco.detectMarkers(frame,
-                                                       arucoDict, parameters=arucoParams)
+    (corners, ids, rejected) = cv2.aruco.detectMarkers(frame, arucoDict, parameters=arucoParams)
 
-    # verify *at least* one ArUco marker was detected
-    if len(corners) > 0:
-        # flatten the ArUco IDs list
-        ids = ids.flatten()
+    if len(corners)>1:
+        board_corners = find_aruco_corners(corners, ids)
+        if board_corners:
+            frame = replace_with_image(frame, board_corners, image)
 
-        # loop over the detected ArUCo corners
         for (markerCorner, markerID) in zip(corners, ids):
-            # corners = markerCorner.reshape((4, 2))
-            # (topLeft, topRight, bottomRight, bottomLeft) = corners
-            #
-            # topRight = (int(topRight[0]), int(topRight[1]))
-            # bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
-            # bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
-            # topLeft = (int(topLeft[0]), int(topLeft[1]))
-            #
-            # # draw the bounding box of the ArUCo detection
-            # cv2.line(frame, topLeft, topRight, (0, 255, 0), 2)
-            # cv2.line(frame, topRight, bottomRight, (0, 255, 0), 2)
-            # cv2.line(frame, bottomRight, bottomLeft, (0, 255, 0), 2)
-            # cv2.line(frame, bottomLeft, topLeft, (0, 255, 0), 2)
-            #
-            # # compute and draw the center (x, y)-coordinates of the
-            # # ArUco marker
-            # cX = int((topLeft[0] + bottomRight[0]) / 2.0)
-            # cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-            # cv2.circle(frame, (cX, cY), 4, (0, 0, 255), -1)
-            #
-            # # draw the ArUco marker ID on the frame
-            # cv2.putText(frame, str(markerID),
-            #             (topLeft[0], topLeft[1] - 15),
-            #             cv2.FONT_HERSHEY_SIMPLEX,
-            #             0.5, (0, 255, 0), 2)
+            corners = markerCorner.reshape((4, 2))
+            (topLeft, topRight, bottomRight, bottomLeft) = corners
 
-            frame = replace_with_image(frame, markerCorner.reshape((4, 2)), image)
+            topRight = (int(topRight[0]), int(topRight[1]))
+            bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
+            bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
+            topLeft = (int(topLeft[0]), int(topLeft[1]))
 
-    # show the output frame
+            # draw the bounding box of the ArUCo detection
+            cv2.line(frame, topLeft, topRight, (0, 255, 0), 2)
+            cv2.line(frame, topRight, bottomRight, (0, 255, 0), 2)
+            cv2.line(frame, bottomRight, bottomLeft, (0, 255, 0), 2)
+            cv2.line(frame, bottomLeft, topLeft, (0, 255, 0), 2)
+
+            # compute and draw the center (x, y)-coordinates of the
+            # ArUco marker
+            cX = int((topLeft[0] + bottomRight[0]) / 2.0)
+            cY = int((topLeft[1] + bottomRight[1]) / 2.0)
+            cv2.circle(frame, (cX, cY), 4, (0, 0, 255), -1)
+            cv2.circle(frame, topLeft, 4, (0, 255, 255), -1)
+
+            # draw the ArUco marker ID on the frame
+            cv2.putText(frame, str(markerID),
+                        (topLeft[0], topLeft[1] - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 255, 0), 2)
+
+            # frame = replace_with_image(frame, markerCorner.reshape((4, 2)), image)
+
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
 
     # if the `q` key was pressed, break from the loop
-    if key == ord("q"):
+    if key in [ord("q"), 27]:
         break
 
 # do a bit of cleanup
